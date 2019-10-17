@@ -195,6 +195,7 @@ class CombinedLoss(_Loss):
         :return: scalar
         """
         # input_soft = F.softmax(input, dim=1)
+        target = target.type(torch.long)
         y_2 = torch.mean(self.dice_loss(input, target))
         if weight is None:
             y_1 = torch.mean(self.cross_entropy_loss.forward(input, target))
@@ -281,3 +282,102 @@ class FocalLoss(nn.Module):
             return loss.mean()
         else:
             return loss.sum()
+
+
+class KLDCECombinedLoss(nn.Module):
+    """
+    Combined loss of KL-Divergence and CrossEntropy.
+    """
+
+    def __init__(self, gamma_value=1, beta_value=1.1):
+        super(KLDCECombinedLoss, self).__init__()
+        self.cross_entropy_loss = CrossEntropyLoss2d()
+        self.dice_loss = DiceLoss()
+        self.beta_value = beta_value
+        self.gamma_value = gamma_value
+
+    def forward(self, inp, target, weight=(None, None)):
+        """
+
+        :param inp: tuple with (prior, posterior, predicted_y), prior, posterior can be dict for multi-layer KLDiv.
+        :param target: Tensor (Ground truth)
+        :param weight: Tuple, (None, None) | (False, False) | (weights, class_weights) and any mix
+        :return: dice_loss, CE_loss, KL_div_loss, total_loss
+        """
+        prior, posterior, y_p = inp
+        if target is not None:
+            target = target.type(torch.long)
+
+        dice_loss = torch.tensor([0]).type(torch.FloatTensor)
+        cross_entropy_loss = torch.tensor([0]).type(torch.FloatTensor)
+        kl_div_loss = torch.tensor([0]).type(torch.FloatTensor)
+        criterion = nn.KLDivLoss(reduction='batchmean')
+        w, cw = weight
+        if w is None:
+            dice_loss = torch.mean(self.dice_loss(y_p, target))
+        elif w is not False:
+            dice_loss = torch.mean(torch.mul(self.dice_loss(y_p, target), w))
+
+        if cw is None:
+            cross_entropy_loss = torch.mean(self.cross_entropy_loss.forward(y_p, target))
+        elif cw is not False:
+            cross_entropy_loss = torch.mean(
+                torch.mul(self.cross_entropy_loss.forward(y_p, target), cw))
+
+        if prior is not None and posterior is not None:
+            if type(prior) is dict and type(posterior) is dict:
+                for i, j in zip(prior, posterior):
+                    # kl_div_loss += criterion(F.log_softmax(posterior[j].type(torch.FloatTensor), dim=0),
+                    #                        F.softmax(prior[i].type(torch.FloatTensor), dim=0))
+                    kl_div_loss += self.loss_to_normal(posterior[j]) + self.loss_to_normal(prior[i])
+            else:
+
+                # kl_div_loss = criterion(F.log_softmax(posterior.type(torch.FloatTensor), dim=0),
+                #                       F.softmax(prior.type(torch.FloatTensor), dim=0))
+                kl_div_loss += self.loss_to_normal(posterior) + self.loss_to_normal(prior)
+
+        if posterior is not None and prior is None:
+            kl_div_loss = posterior
+
+        dice_loss = dice_loss.cuda(0)
+        cross_entropy_loss = cross_entropy_loss.cuda(0)
+        kl_div_loss = kl_div_loss.cuda(0)
+
+        cumulative_loss = dice_loss + cross_entropy_loss + kl_div_loss
+
+        cumulative_loss = cumulative_loss.cuda(0)
+
+        return dice_loss, cross_entropy_loss, kl_div_loss, cumulative_loss
+
+    def loss_to_normal(self, tup):
+        mu, logvar = tup
+        mu, logvar = mu.type(torch.FloatTensor), logvar.type(torch.FloatTensor)
+        KLD_ = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        return KLD_
+    
+class KLDivLossFunc(nn.Module):
+
+    def __init__(self, beta_value=1):
+        super(KLDivLossFunc, self).__init__()
+        self.beta_value = beta_value
+
+    def forward(self, inp, target):
+        """Forward pass
+           :param inp:
+           :type inp: input data tensor
+           :param target: shape = NxHxW
+           :type target: torch.tensor
+           :return: combined loss value
+           :rtype: torch.tensor
+         """
+        criterion = nn.KLDivLoss(reduction='batchmean')
+        kldivloss = criterion(F.log_softmax(target.type(torch.FloatTensor), dim=0),
+                              F.softmax(inp.type(torch.FloatTensor), dim=0)).cuda()
+
+        return kldivloss
+
+    @staticmethod
+    def loss_to_normal(z_mu, z_var):
+        kl_loss = 0.5 * torch.sum(torch.exp(z_var) + z_mu ** 2 - 1. - z_var)
+        return kl_loss
+
