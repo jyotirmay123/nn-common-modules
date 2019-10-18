@@ -1,10 +1,10 @@
 import setuptools
 
 setuptools.setup(name="nn-common-modules",
-                 version="1.1",
+                 version="1.2",
                  url="https://github.com/abhi4ssj/nn-common-modules",
-                 author="Shayan Ahmad Siddiqui, Abhijit Guha Roy",
-                 author_email="shayan.siddiqui89@gmail.com",
+                 author="Jyotirmay Senapati, Shayan Ahmad Siddiqui, Abhijit Guha Roy",
+                 author_email="senapati.jyotirmay@gmail.com",
                  description="Common modules, blocks and losses which can be reused in a deep neural netwok specifically for segmentation",
                  packages=setuptools.find_packages(),
                  install_requires=['pip>=19.0.0', 'numpy>=1.14.0', 'torch>=1.0.0',
