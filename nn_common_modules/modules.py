@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from squeeze_and_excitation import squeeze_and_excitation as se
 import torch.nn.functional as F
-
+import torch.distributions as tdist
 
 class DenseBlock(nn.Module):
     """Block with dense connections
@@ -711,58 +711,82 @@ class DecoderBlockNoBN(DenseBlockNoBN):
 
 class FullyPreActivatedResBlock(nn.Module):
 
-    def __init__(self, params, kernel_size):
+    def __init__(self, params, concat_extra):
         super(FullyPreActivatedResBlock, self).__init__()
+        padding_h = int((params['kernel_h'] - 1) / 2)
+        padding_w = int((params['kernel_w'] - 1) / 2)
+        # self.conv = nn.Conv2d(in_channels=params['num_channels']+concat_extra, out_channels=params['num_filters'],
+        #                       kernel_size=(
+        #                           params['kernel_h'], params['kernel_w']),
+        #                        padding=(padding_h, padding_w),
+        #                        stride=params['stride_conv'])
 
-        self.conv1 = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
-                               kernel_size=(kernel_size, kernel_size),
-                               # padding=(padding_h, padding_w),
+        input_size = params['num_channels']+concat_extra
+        self.conv1 = nn.Conv2d(in_channels=input_size, out_channels=params['num_filters'],
+                               kernel_size= (params['kernel_h'], params['kernel_w']),
+                               padding=(padding_h, padding_w),
                                stride=params['stride_conv'])
         self.conv2 = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
-                               kernel_size=(kernel_size, kernel_size),
-                               # padding=(padding_h, padding_w),
+                               kernel_size=( params['kernel_h'], params['kernel_w']),
+                               padding=(padding_h, padding_w),
                                stride=params['stride_conv'])
         self.conv3 = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
-                               kernel_size=(kernel_size, kernel_size),
-                               # padding=(padding_h, padding_w),
+                               kernel_size=( params['kernel_h'], params['kernel_w']),
+                               padding=(padding_h, padding_w),
                                stride=params['stride_conv'])
         self.conv4 = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
-                               kernel_size=(kernel_size, kernel_size),
-                               # padding=(0, 0),
+                               kernel_size=( params['kernel_h'], params['kernel_w']),
+                               padding=( params['kernel_h'], params['kernel_w']),
                                stride=params['stride_conv'])
-        self.batchnorm1 = nn.BatchNorm2d(num_features=params['num_channels'])
-        self.batchnorm2 = nn.BatchNorm2d(num_features=params['num_channels'])
-        self.batchnorm3 = nn.BatchNorm2d(num_features=params['num_channels'])
-        self.batchnorm4 = nn.BatchNorm2d(num_features=params['num_channels'])
+        # self.batchnorm1 = nn.BatchNorm2d(num_features=input_size)
+        # self.batchnorm2 = nn.BatchNorm2d(num_features=params['num_channels'])
+        # self.batchnorm3 = nn.BatchNorm2d(num_features=params['num_channels'])
+        # self.batchnorm4 = nn.BatchNorm2d(num_features=params['num_channels'])
         self.prelu = nn.PReLU()
 
     def forward(self, input, depth):
+        # input = self.conv(input)
         if depth >= 1:
-            o1 = self.batchnorm1(input)
-            o2 = self.prelu(o1)
-            o3 = self.conv1(o2)
-            o4 = input + o3
-            out = o4
-        if depth >= 2:
-            o5 = self.batchnorm2(o4)
-            o6 = self.prelu(o5)
-            o7 = self.conv2(o6)
-            o8 = o4 + o7
-            out = o8
-        if depth >= 3:
-            o9 = self.batchnorm3(o8)
-            o10 = self.prelu(o9)
-            o11 = self.conv3(o10)
-            o12 = o11 + o8
-            out = o12
-        if depth >= 4:
-            o13 = self.batchnorm4(o12)
-            o14 = self.prelu(o13)
-            o15 = self.conv4(o14)
-            o16 = o15 + o12
-            out = o16
-        if depth > 4:
-            raise Exception('Depth more than 4 does not supported!!!')
+            # o1 = self.batchnorm1(input)
+            # o2 = self.prelu(input)
+            o3 = self.conv1(input)
+            out = o3
+            # o5 = self.batchnorm2(o3)
+            # o6 = self.prelu(o5)
+            # o7 = self.conv2(o6)
+            #
+            # o8 = o3 + o7
+            #
+            # o9 = self.batchnorm2(o8)
+            # o10 = self.prelu(o9)
+            # o11 = self.conv2(o10)
+            #
+            # # o12 = o7 + o11
+            # #
+            # # o13 = self.batchnorm4(o12)
+            # # o14 = self.prelu(o13)
+            # # o15 = self.conv4(o14)
+            # out = o11
+        # if depth >= 2:
+        #     o5 = self.batchnorm2(o4)
+        #     o6 = self.prelu(o5)
+        #     o7 = self.conv2(o6)
+        #     o8 = o4 + o7
+        #     out = o8
+        # if depth >= 3:
+        #     o9 = self.batchnorm3(o8)
+        #     o10 = self.prelu(o9)
+        #     o11 = self.conv3(o10)
+        #     o12 = o11 + o8
+        #     out = o12
+        # if depth >= 4:
+        #     o13 = self.batchnorm4(o12)
+        #     o14 = self.prelu(o13)
+        #     o15 = self.conv4(o14)
+        #     o16 = o15 + o12
+        #     out = o16
+        # if depth > 4:
+        #     raise Exception('Depth more than 4 does not supported!!!')
 
         return out
 
@@ -806,8 +830,7 @@ class FullBayesianDenseBlock(nn.Module):
         padding_w = int((params['kernel_w'] - 1) / 2)
 
         conv1_out_size = int(params['num_channels'] + params['num_filters'])
-        conv2_out_size = int(
-            params['num_channels'] + params['num_filters'] + params['num_filters'])
+        conv2_out_size = int(params['num_filters'] + params['num_filters'])
 
         self.conv1_mu = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
                                kernel_size=(
@@ -848,15 +871,15 @@ class FullBayesianDenseBlock(nn.Module):
             self.drop_out_needed = False
 
     def reparameterization(self, x_mean, x_sigma):
+        # using logvar as log(sigma**2) or 2*log(sigma)
         sz = x_sigma.size()
-        # TODO: insert Cuda check, Remove harcoded cuda device
-        # x_sigma_noise = torch.mul(torch.sqrt(torch.exp(x_sigma)), self.normal.sample(sz).squeeze().cuda())
-        x_sigma_noise = torch.mul(torch.sqrt(x_sigma), self.normal.sample(sz).squeeze().cuda())
+        x_sigma_noise = torch.mul((x_sigma/2).exp(), self.normal.sample(sz).squeeze().cuda())
         out = x_mean + x_sigma_noise
         return out
 
-    def get_kl_loss(self, x_mean, x_sigma):
-        kl_loss = torch.mean(x_sigma + (x_mean ** 2) - torch.log(x_sigma) - 1)
+    def get_kl_loss(self, mu, logvar):
+        # using logvar as log(sigma**2) or 2*log(sigma)
+        kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         return kl_loss
 
     def forward(self, input):
@@ -868,7 +891,7 @@ class FullBayesianDenseBlock(nn.Module):
         :rtype: torch.tensor [FloatTensor]
         """
         o1_mu = self.conv1_mu(input)
-        o1_sigma = self.conv1_sigma(torch.mul(input, input))
+        o1_sigma = self.conv1_sigma(input)
         o2_mu = self.tanh(o1_mu)
         o2_sigma = self.tanh(o1_sigma)
         o3 = self.reparameterization(o2_mu, o2_sigma)
@@ -876,17 +899,17 @@ class FullBayesianDenseBlock(nn.Module):
         o4 = torch.cat((input, o3), dim=1)
 
         o5_mu = self.conv2_mu(o4)
-        o5_sigma = self.conv2_mu(torch.mul(o4, o4))
-        o6_mu = self.prelu(o5_mu)
-        o6_sigma = self.prelu(o5_sigma)
+        o5_sigma = self.conv2_sigma(o4)
+        o6_mu = self.tanh(o5_mu)
+        o6_sigma = self.tanh(o5_sigma)
         o7 = self.reparameterization(o6_mu, o6_sigma)
         kl_2 = self.get_kl_loss(o6_mu, o6_sigma)
         o8 = torch.cat((o3, o7), dim=1)
 
         o9_mu  = self.conv3_mu(o8)
-        o9_sigma = self.conv3_sigma(torch.mul(o8, o8))
-        o10_mu = self.prelu(o9_mu)
-        o10_sigma = self.prelu(o9_sigma)
+        o9_sigma = self.conv3_sigma(o8)
+        o10_mu = self.tanh(o9_mu)
+        o10_sigma = self.tanh(o9_sigma)
         out = self.reparameterization(o10_mu, o10_sigma)
         kl_3 = self.get_kl_loss(o10_mu, o10_sigma)
 
