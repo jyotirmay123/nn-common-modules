@@ -713,8 +713,8 @@ class FullyPreActivatedResBlock(nn.Module):
 
     def __init__(self, params, concat_extra):
         super(FullyPreActivatedResBlock, self).__init__()
-        padding_h = int((params['kernel_h'] - 1) / 2)
-        padding_w = int((params['kernel_w'] - 1) / 2)
+        # padding_h = int((params['kernel_h'] - 1) / 2)
+        # padding_w = int((params['kernel_w'] - 1) / 2)
         # self.conv = nn.Conv2d(in_channels=params['num_channels']+concat_extra, out_channels=params['num_filters'],
         #                       kernel_size=(
         #                           params['kernel_h'], params['kernel_w']),
@@ -723,70 +723,73 @@ class FullyPreActivatedResBlock(nn.Module):
 
         input_size = params['num_channels']+concat_extra
         self.conv1 = nn.Conv2d(in_channels=input_size, out_channels=params['num_filters'],
-                               kernel_size= (params['kernel_h'], params['kernel_w']),
-                               padding=(padding_h, padding_w),
+                               kernel_size= (3,3),
+                               padding=(1,1),
                                stride=params['stride_conv'])
         self.conv2 = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
-                               kernel_size=( params['kernel_h'], params['kernel_w']),
-                               padding=(padding_h, padding_w),
+                               kernel_size=( 3,3),
+                               padding=(1,1),
                                stride=params['stride_conv'])
         self.conv3 = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
-                               kernel_size=( params['kernel_h'], params['kernel_w']),
-                               padding=(padding_h, padding_w),
+                               kernel_size=( 3,3),
+                               padding=(1,1),
                                stride=params['stride_conv'])
         self.conv4 = nn.Conv2d(in_channels=params['num_channels'], out_channels=params['num_filters'],
-                               kernel_size=( params['kernel_h'], params['kernel_w']),
-                               padding=( params['kernel_h'], params['kernel_w']),
+                               kernel_size=( 3,3),
+                               padding=(1,1),
                                stride=params['stride_conv'])
-        # self.batchnorm1 = nn.BatchNorm2d(num_features=input_size)
-        # self.batchnorm2 = nn.BatchNorm2d(num_features=params['num_channels'])
-        # self.batchnorm3 = nn.BatchNorm2d(num_features=params['num_channels'])
-        # self.batchnorm4 = nn.BatchNorm2d(num_features=params['num_channels'])
+        self.batchnorm1 = nn.BatchNorm2d(num_features=input_size)
+        self.batchnorm2 = nn.BatchNorm2d(num_features=params['num_channels'])
+        self.batchnorm3 = nn.BatchNorm2d(num_features=params['num_channels'])
+        self.batchnorm4 = nn.BatchNorm2d(num_features=params['num_channels'])
         self.prelu = nn.PReLU()
 
     def forward(self, input, depth):
+        #return input
         # input = self.conv(input)
         if depth >= 1:
-            # o1 = self.batchnorm1(input)
-            # o2 = self.prelu(input)
-            o3 = self.conv1(input)
-            out = o3
+            o1 = self.batchnorm1(input)
+            o2 = self.prelu(o1)
+            o4 = self.conv1(o2)
+            # # out = o3
             # o5 = self.batchnorm2(o3)
             # o6 = self.prelu(o5)
             # o7 = self.conv2(o6)
             #
             # o8 = o3 + o7
+            # # o8 = torch.stack([o3,o7], dim=0).sum(dim=1)
             #
+            # #
             # o9 = self.batchnorm2(o8)
             # o10 = self.prelu(o9)
             # o11 = self.conv2(o10)
-            #
-            # # o12 = o7 + o11
             # #
-            # # o13 = self.batchnorm4(o12)
-            # # o14 = self.prelu(o13)
-            # # o15 = self.conv4(o14)
-            # out = o11
-        # if depth >= 2:
-        #     o5 = self.batchnorm2(o4)
-        #     o6 = self.prelu(o5)
-        #     o7 = self.conv2(o6)
-        #     o8 = o4 + o7
-        #     out = o8
-        # if depth >= 3:
-        #     o9 = self.batchnorm3(o8)
-        #     o10 = self.prelu(o9)
-        #     o11 = self.conv3(o10)
-        #     o12 = o11 + o8
-        #     out = o12
-        # if depth >= 4:
-        #     o13 = self.batchnorm4(o12)
-        #     o14 = self.prelu(o13)
-        #     o15 = self.conv4(o14)
-        #     o16 = o15 + o12
-        #     out = o16
-        # if depth > 4:
-        #     raise Exception('Depth more than 4 does not supported!!!')
+            # # # o12 = o7 + o11
+            # # #
+            # # # o13 = self.batchnorm4(o12)
+            # # # o14 = self.prelu(o13)
+            # # # o15 = self.conv4(o14)
+            out = o4
+        if depth >= 2:
+            o5 = self.batchnorm2(o4)
+            o6 = self.prelu(o5)
+            o7 = self.conv2(o6)
+            o8 = o4 + o7
+            out = o8
+        if depth >= 3:
+            o9 = self.batchnorm3(o8)
+            o10 = self.prelu(o9)
+            o11 = self.conv3(o10)
+            o12 = o11 + o8
+            out = o12
+        if depth >= 4:
+            o13 = self.batchnorm4(o12)
+            o14 = self.prelu(o13)
+            o15 = self.conv4(o14)
+            o16 = o15 + o12
+            out = o16
+        if depth > 4:
+            raise Exception('Depth more than 4 does not supported!!!')
 
         return out
 
