@@ -257,8 +257,108 @@ class ClassifierBlock(nn.Module):
             out_conv = F.conv2d(input, weights)
         else:
             out_conv = self.conv(input)
+
         return out_conv
 
+
+class ClassifierBlockMultiHeaded(nn.Module):
+    """
+    Last layer
+
+    :param params: {
+        'num_channels':1,
+        'num_filters':64,
+        'kernel_c':5,
+        'stride_conv':1,
+        'pool':2,
+        'stride_pool':2,
+        'num_classes':28,
+        'se_block': se.SELayer.None,
+        'drop_out':0,2}
+    :type params: dict
+    :return: forward passed tensor
+    :rtype: torch.tensor [FloatTensor]
+    """
+
+    def __init__(self, params):
+        super(ClassifierBlockMultiHeaded, self).__init__()
+        self.conv = nn.Conv2d(
+            params['num_channels'], params['num_class'], params['kernel_c'], params['stride_conv'])
+
+        self.conv1 = nn.Conv2d(params['num_class'], 1, 5, 1)
+        self.conv2 = nn.Conv2d(1, 1, 5, 1)
+        self.linear1 = nn.Linear(37696, 337)
+        self.linear2 = nn.Linear(337, 3)
+        self.relu = nn.PReLU()
+        self.sf = nn.Softmax(dim=1)
+        self.bn1 = nn.BatchNorm2d(1)
+        self.bn2 = nn.BatchNorm2d(1)
+        self.bn3 = nn.BatchNorm1d(337)
+
+    def forward(self, input, weights=None):
+        """Forward pass
+
+        :param input: Input tensor, shape = (N x C x H x W)
+        :type input: torch.tensor [FloatTensor]
+        :param weights: Weights for classifier regression, defaults to None
+        :type weights: torch.tensor (N), optional
+        :return: logits
+        :rtype: torch.tensor
+        """
+        batch_size, channel, a, b = input.size()
+        if weights is not None:
+            weights, _ = torch.max(weights, dim=0)
+            weights = weights.view(1, channel, 1, 1)
+            out_conv = F.conv2d(input, weights)
+        else:
+            out_conv = self.conv(input)
+
+        interim1 = self.relu(self.bn1(self.conv1(out_conv)))
+        interim2 = self.relu(self.bn2(self.conv2(interim1)))
+
+        interim3 = interim2.view(interim2.size()[0], -1)
+
+        interim4 = self.relu(self.bn3(self.linear1(interim3)))
+        out_categorical = self.sf(self.linear2(interim4))
+        return out_conv, out_categorical
+
+class ScalarInput(nn.Module):
+    """
+    Last layer
+
+    :param params: {
+        'num_channels':1,
+        'num_filters':64,
+        'kernel_c':5,
+        'stride_conv':1,
+        'pool':2,
+        'stride_pool':2,
+        'num_classes':28,
+        'se_block': se.SELayer.None,
+        'drop_out':0,2}
+    :type params: dict
+    :return: forward passed tensor
+    :rtype: torch.tensor [FloatTensor]
+    """
+
+    def __init__(self, params):
+        super(ScalarInput, self).__init__()
+        self.linear = nn.Linear(3, 1)
+        self.relu = nn.PReLU()
+
+    def forward(self, input, weights=None):
+        """Forward pass
+
+        :param input: Input tensor, shape = (N x C x H x W)
+        :type input: torch.tensor [FloatTensor]
+        :param weights: Weights for classifier regression, defaults to None
+        :type weights: torch.tensor (N), optional
+        :return: logits
+        :rtype: torch.tensor
+        """
+        interim = self.linear1(input)
+        out = self.relu(interim)
+        return out
 
 class GenericBlock(nn.Module):
     """
@@ -866,7 +966,8 @@ class FullBayesianDenseBlock(nn.Module):
                                   stride=params['stride_conv'])
 
         self.tanh = nn.Tanh()
-        self.normal = tdist.Normal(torch.tensor([0.0]), torch.tensor([1.0]))
+        self.variance = 0.5
+        self.normal = tdist.Normal(torch.tensor([0.0]), torch.tensor([self.variance]))
         if params['drop_out'] > 0:
             self.drop_out_needed = True
             self.drop_out = nn.Dropout2d(params['drop_out'])
