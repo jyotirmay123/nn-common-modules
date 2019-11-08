@@ -966,7 +966,7 @@ class FullBayesianDenseBlock(nn.Module):
                                   stride=params['stride_conv'])
 
         self.tanh = nn.Tanh()
-        self.variance = 0.5
+        self.variance = 1.0
         self.normal = tdist.Normal(torch.tensor([0.0]), torch.tensor([self.variance]))
         if params['drop_out'] > 0:
             self.drop_out_needed = True
